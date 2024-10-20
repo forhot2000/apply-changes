@@ -44,8 +44,8 @@ declare global {
     interface IContext {
         schema: DeepReadonly<ISchema>
         theme: Theme
-        updateSchema: (...patches: Patch[]) => void
-        syncChanges: () => void
+        pushChanges: (...patches: Patch[]) => void
+        updateChanges: () => void
         createWidget: (widget: string, opts?: Partial<Pick<ISchema, 'props' | 'children'>>) => ISchema
     }
 
