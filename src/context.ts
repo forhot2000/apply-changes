@@ -20,8 +20,8 @@ function createWidget(widget: string, opts?: Partial<Pick<ISchema, 'props' | 'ch
 }
 
 
-function isNumber(key: Key) {
-    return !isNaN(Number(key));
+function isNumber(val: any) {
+    return !isNaN(val);
 }
 
 function findNonObjectNode(obj: any, path: Path, start: number, end: number): { index: number, parent?: any } {
@@ -48,158 +48,191 @@ function makeObject(obj: any, path: Path, start: number, end: number) {
     return temp
 }
 
-function onAdd(schema: any, patch: AddPatch): Patch | null {
+function applyAddPatch(obj: any, patch: AddPatch, callback: (patch: Patch) => void) {
 
     if (patch.path.length === 0) {
         console.error('invalid path:', patch.path)
-        return null;
+        return;
     }
 
     const key = (patch.path)[patch.path.length - 1]
+
     if (!isNumber(key)) {
         console.error('invalid path:', patch.path)
-        return null;
+        return;
     }
 
-    const node = findNonObjectNode(schema, patch.path, 0, patch.path.length - 1)
+    const node = findNonObjectNode(obj, patch.path, 0, patch.path.length - 1)
 
     if (node.index >= 0) {
         const parent = makeObject(node.parent, patch.path, node.index, patch.path.length - 1)
         const value = cloneDeep(patch.value)
-        parent.splice(Number(key), 0, value)
+        parent.splice(+key, 0, value)
 
-        return {
+        return callback({
             type: 'update',
             path: patch.path.slice(0, node.index + 1),
             value: cloneDeep(node.parent[patch.path[node.index]]),
-        }
+        })
 
     } else {
         const parent = node.parent
+
         if (!Array.isArray(parent)) {
-            return null;
+            console.error('invalid path (not array):', patch.path)
+            return;
+        }
+
+        if (+key > parent.length) {
+            console.error('invalid path (array index overflow):', patch.path)
+            return;
         }
 
         const value = cloneDeep(patch.value)
-        parent.splice(Number(key), 0, value)
-        return patch
+        parent.splice(+key, 0, value)
+        return callback(patch)
     }
 }
 
-function onUpdate(schema: any, patch: UpdatePatch): Patch | null {
+function applyUpdatePatch(obj: any, patch: UpdatePatch, callback: (patch: Patch) => void) {
 
     if (patch.path.length === 0) {
         console.error('invalid path:', patch.path)
-        return null;
+        return;
     }
 
     const key = (patch.path)[patch.path.length - 1]
 
-    const node = findNonObjectNode(schema, patch.path, 0, patch.path.length - 1)
+    const node = findNonObjectNode(obj, patch.path, 0, patch.path.length - 1)
+
+    if (isNumber(key)) {
+        if (+key >= node.parent.length) {
+            console.error('invalid path (array index overflow):', patch.path)
+            return;
+        }
+    }
 
     if (node.index >= 0) {
         const parent = makeObject(node.parent, patch.path, node.index, patch.path.length - 1)
         const value = cloneDeep(patch.value)
         parent[key] = value
 
-        return {
+        return callback({
             type: 'update',
             path: patch.path.slice(0, node.index + 1),
             value: cloneDeep(node.parent[patch.path[node.index]]),
-        }
+        })
 
     } else {
         const parent = node.parent
         const value = cloneDeep(patch.value)
         parent[key] = value
-        return patch
+        return callback(patch)
     }
 }
 
-function onRemove(schema: any, patch: RemovePatch): Patch | null {
+function applyRemovePatch(obj: any, patch: RemovePatch, callback: (patch: Patch) => void) {
 
     if (patch.path.length === 0) {
         console.error('invalid path:', patch.path)
-        return null;
+        return;
     }
 
     const key = (patch.path)[patch.path.length - 1]
 
-    const node = findNonObjectNode(schema, patch.path, 0, patch.path.length - 1)
+    const node = findNonObjectNode(obj, patch.path, 0, patch.path.length - 1)
 
-    if (node.index < 0) {
-        if (isNumber(key)) {
-            node.parent.splice(key, 1)
-        } else {
-            delete node.parent[key]
-        }
-        return patch
+    if (node.index >= 0) {
+        console.error('invalid path (not exists):', patch.path)
+        return;
     }
 
-    return null
+    if (isNumber(key)) {
+        if (+key >= node.parent.length) {
+            console.error('invalid path (array index overflow):', patch.path)
+            return;
+        }
+    }
+
+    if (isNumber(key)) {
+        node.parent.splice(+key, 1)
+    } else {
+        delete node.parent[key]
+    }
+    return callback(patch)
 }
 
-function onMove(schema: any, patch: MovePatch): Patch | null {
+function applyMovePatch(obj: any, patch: MovePatch, callback: (patch: Patch) => void) {
 
     if (patch.from.length === 0) {
         console.error('invalid from:', patch.from)
-        return null;
+        return;
     }
 
     if (patch.path.length === 0) {
         console.error('invalid path:', patch.path)
-        return null;
+        return;
     }
 
     const fromKey = (patch.from)[patch.from.length - 1]
     const key = (patch.path)[patch.path.length - 1]
 
-    const fromNode = findNonObjectNode(schema, patch.from, 0, patch.from.length - 1)
+    const fromNode = findNonObjectNode(obj, patch.from, 0, patch.from.length - 1)
 
     if (fromNode.index >= 0) {
         console.error('invalid from (not exists):', patch.from)
-        return null
+        return;
     }
 
-    const node = findNonObjectNode(schema, patch.path, 0, patch.path.length - 1)
+    if (isNumber(fromKey)) {
+        if (+fromKey >= fromNode.parent.length) {
+            console.error('invalid from (array index overflow):', patch.from)
+            return;
+        }
+    }
 
-    if (fromNode.index >= 0) {
+    const node = findNonObjectNode(obj, patch.path, 0, patch.path.length - 1)
+
+    if (node.index >= 0) {
         console.error('invalid path (not exists):', patch.path)
-        return null
+        return;
+    }
+
+    if (isNumber(key)) {
+        if (+key > node.parent.length - (fromNode.parent === node.parent ? 1 : 0)) {
+            console.error('invalid path (array index overflow):', patch.path)
+            return;
+        }
     }
 
     const value: any = node.parent[fromKey]
     if (isNumber(fromKey)) {
-        node.parent.splice(fromKey, 1)
+        fromNode.parent.splice(+fromKey, 1)
     } else {
-        delete node.parent[fromKey]
+        delete fromNode.parent[fromKey]
     }
 
-    if (node.index < 0) {
-        if (isNumber(key)) {
-            node.parent.splice(key, 0, value)
-        } else {
-            node.parent[key] = value
-        }
-        return patch
+    if (isNumber(key)) {
+        node.parent.splice(+key, 0, value)
+    } else {
+        node.parent[key] = value
     }
-
-    return null
+    return callback(patch)
 }
 
 
-function updateObject(schema: any, patch: Patch): Patch | null {
+function applyPatch(obj: any, patch: Patch, callback: (patch: Patch) => void) {
     switch (patch.type) {
         case 'add':
-            return onAdd(schema, patch)
+            return applyAddPatch(obj, patch, callback)
         case 'remove':
-            return onRemove(schema, patch)
+            return applyRemovePatch(obj, patch, callback)
         case 'update':
-            return onUpdate(schema, patch)
+            return applyUpdatePatch(obj, patch, callback)
         case 'move':
-            return onMove(schema, patch)
+            return applyMovePatch(obj, patch, callback)
         default:
-            return patch
+            return callback(patch)
     }
 }
 
@@ -218,10 +251,10 @@ export default function useContext(): IContext {
         theme,
         pushChanges(...patches: Patch[]): void {
             for (const patch of patches) {
-                const _patch = updateObject(schema.value, patch);
-                if (_patch) {
+                applyPatch(schema.value, patch, (_patch) => {
                     changes.push(_patch)
-                }
+                    // TODO: update schema node map
+                });
             }
         },
         updateChanges() {
