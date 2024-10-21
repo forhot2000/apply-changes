@@ -205,7 +205,7 @@ function applyMovePatch(obj: any, patch: MovePatch, callback: (patch: Patch) => 
         }
     }
 
-    const value: any = node.parent[fromKey]
+    const value: any = fromNode.parent[fromKey]
     if (isNumber(fromKey)) {
         fromNode.parent.splice(+fromKey, 1)
     } else {
